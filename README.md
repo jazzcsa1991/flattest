@@ -5,11 +5,11 @@ pasos para su intalación en docker
 
 1- clonar o descargar este repositorio
 
-2- ejecuat: docker build --build-arg ARG_DEFAULT_PORT=8000 -t flat .
+2- ejecutar: docker build --build-arg ARG_DEFAULT_PORT=8000 -t flat .
 
-3- ejecuat: docker build . -t flat
+3- ejecutar: docker build . -t flat
 
-4- ejecuatar y poner el token de acceso a un repositorio de git, poner el repositorio y la url del repositorio: docker run  -p 8000:8000 -e TOKEN="poneraquitoken" -e REPO="poner aqui repo" -e URL_GIT='poner aqui url de repo' flat
+4- ejecutar y poner el token de acceso a un repositorio de git, poner el repositorio y la url del repositorio: docker run  -p 8000:8000 -e TOKEN="poneraquitoken" -e REPO="poner aqui repo" -e URL_GIT='poner aqui url de repo' flat
 
 
 ejemplo:
