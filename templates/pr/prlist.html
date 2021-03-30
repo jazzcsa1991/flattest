@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% block nav %}
+
+<nav class="navbar" role="navigation" aria-label="main navigation">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="https://flat.mx/">
+        <img src="https://flat.mx/static/img/logo.svg" width="112" height="28">
+      </a>
+      <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </a>
+    </div>
+    <div id="navbarBasicExample" class="navbar-menu">
+      <div class="navbar-start">
+        <a class="navbar-item">Home</a>
+        <a class="navbar-item" href="{% url 'api:branches' %}">Git information</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">PR</a>
+          <div class="navbar-dropdown" >
+            <a class="navbar-item" href="{% url 'api:pr' %}">Create PR</a>
+            <a class="navbar-item" href="{% url 'api:pr_list' %}">PR list</a>
+            <a class="navbar-item" href="{% url 'api:pr_created' %}">PR created</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+  {% endblock%}
+{% block container %}
+<div>
+    <p style="margin-bottom: 50px;" >Lista de Pull Request en este repositorio.:</p>
+    {% for pull in pulls%}
+      <div class="field is-horizontal">
+        <label class="label is-small" style="margin-left: 10px"> {{forloop.counter}} 
+            Title:{{pull.title}} 
+           author:{{pull.user}} date: {{pull.created_at}} status: {{pull.state}}</label>
+        {% if pull.state == "open"%}
+        <button id="open-modal{{forloop.counter}}" class="button is-small" value={{pull.number}}>cerrar</button>
+        <button id="open-modal{{forloop.counter}}2" class="button is-small">merge</button>
+        {% endif%}
+      </div>  
+    {% endfor %}
+</div>
+<div class="modal animated fadeIn" id="modalinfo">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <section class="modal-card-body">
+        <h1 class="title">¡Listo!</h1>
+        <p id="modal-info"></p>
+      </section>
+      <footer class="modal-card-foot">
+        <button id="close-modal" class="button is-small">Ok</button>
+      </footer>
+    </div>
+  </div>
+{%for pull in pulls%}
+{% if pull.state == "open"%}
+<form method="POST" id="close_pr{{pull.number}}" enctype="multipart/form-data">
+<div class="modal animated fadeIn" id="modal{{forloop.counter}}">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <section class="modal-card-body">
+        <h1 class="title">¡Listo!</h1>
+        <p id="modal-info"> Se cerrara el siguiente pull request: {{pull.number}}</p>
+      </section>
+      <footer class="modal-card-foot">
+        <button class="button is-small" type="submit">Cerrar</button>
+      </footer>
+    </div>
+  </div>
+</form>
+<form method="POST" id="close_pr{{pull.number}}2" enctype="multipart/form-data">
+    {% csrf_token %} 
+  <div class="modal animated fadeIn" id="modal{{forloop.counter}}2">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <section class="modal-card-body">
+        <h1 class="title">¡Listo! modal 2</h1>
+        <p id="modal-info">Se combinara el siguiente pull request: {{pull.number}}</p>
+        <div class="field">
+            <p class="label is-small">Commit message:</p>
+            <input id="commit{{pull.number}}" name="commit{{pull.number}}" class="input is-small" type="text" required>
+        </div>
+      </section>
+      <footer class="modal-card-foot">
+        <button class="button is-small" type="submit">Merge</button>
+      </footer>
+    </div>
+  </div>
+</form>
+  <script>
+    //Funcion para cerrar el modal y recargar la página
+    $('#open-modal{{forloop.counter}}').on('click',function(){
+        
+        $("#modal{{forloop.counter}}").addClass("is-active");
+    });
+</script>
+<script>
+    //Funcion para cerrar el modal y recargar la página
+    $('#open-modal{{forloop.counter}}2').on('click',function(){
+        $("#modal{{forloop.counter}}2").addClass("is-active");
+    });
+</script>
+<script>
+    //Funcion para cerrar el modal y recargar la página
+    $('#close-modal{{forloop.counter}}').on('click',function(){
+        window.location.replace("{% url 'api:pr_list' %}");
+        return false;
+    });
+</script>
+<script>
+    //Funcion para cerrar el modal y recargar la página
+    $('#close-modal{{forloop.counter}}2').on('click',function(){
+        window.location.replace("{% url 'api:pr_list' %}");
+        return false;
+    });
+</script>
+<script>
+    //Función que cierra un pull request
+    $("#close_pr{{pull.number}}").on('submit', function(event){
+        event.preventDefault();
+        var url = '{% url 'api:close' %}';
+        $(function()
+            {
+                $.ajax({
+                url: url,
+                type: "POST",
+                data: {
+                    csrfmiddlewaretoken: '{{ csrf_token }}',
+                    number:'{{pull.number}}'
+                },
+                dataType: 'json',
+                success : function(json) {
+                    $("#modal{{forloop.counter}}").removeClass("is-active")
+                    $("#modalinfo").addClass("is-active");
+                    document.getElementById("modal-info").innerHTML = "mensaje " + json.message;
+                },
+            });
+        });
+    })
+</script>
+<script>
+    //Función que genera el merge de un pull request
+    $("#close_pr{{pull.number}}2").on('submit', function(event){
+        event.preventDefault();
+        console.log("haskjhfakjsfhsa")
+        var url = '{% url 'api:merge' %}';
+        $(function()
+            {
+                $.ajax({
+                url: url,
+                type: "POST",
+                data: {
+                    csrfmiddlewaretoken: '{{ csrf_token }}',
+                    number:'{{pull.number}}',
+                    commit:$('#commit{{pull.number}}').val()  
+                },
+                dataType: 'json',
+                success : function(json) {
+                    $("#modal{{forloop.counter}}2").removeClass("is-active")
+                    $("#modalinfo").addClass("is-active");
+                    document.getElementById("modal-info").innerHTML = "mensaje " + json.message;
+                },
+            });
+        });
+    })
+</script>
+  {% endif%}
+  {% endfor %}
+  <script>
+    //Funcion para cerrar el modal y recargar la página
+    $('#close-modal').on('click',function(){
+        window.location.replace("{% url 'api:pr_list' %}");
+        return false;
+    });
+</script>
+{% endblock %}

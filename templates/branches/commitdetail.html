@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block nav %}
+<nav class="navbar" role="navigation" aria-label="main navigation">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="https://flat.mx/">
+        <img src="https://flat.mx/static/img/logo.svg" width="112" height="28">
+      </a>
+      <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </a>
+    </div>
+    <div id="navbarBasicExample" class="navbar-menu">
+      <div class="navbar-start">
+        <a class="navbar-item">Home</a>
+        <a class="navbar-item" href="{% url 'api:branches' %}">Git information</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">PR</a>
+          <div class="navbar-dropdown" >
+            <a class="navbar-item" href="{% url 'api:pr' %}">Create PR</a>
+            <a class="navbar-item" href="{% url 'api:pr_list' %}">PR list</a>
+            <a class="navbar-item" href="{% url 'api:pr_created' %}">PR created</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+  {% endblock%}
+{% block container %}
+<div>
+    <p style="margin-bottom: 50px;" >detalle del commit: {{commit}} de la rama {{branch}}</p>
+    <p>mensaje: {{detail.message}}</p>
+    <p>fecha: {{detail.date}}</p>
+    <p>archivos modificados: {{detail.files}}</p>
+    <p>nombre autor: {{detail.author}}</p>
+    <p>mail autor: {{detail.mail}}</p>
+</div>
+{% endblock %}
