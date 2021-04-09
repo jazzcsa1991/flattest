@@ -1,19 +1,17 @@
-from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
-from django.urls import reverse_lazy
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import ListView,DetailView,CreateView,TemplateView
-from django.shortcuts import redirect
-from api.models import PullRequest
-from git import Repo
-from git import Git
-from github import Github
-from django.http import HttpResponse
-from datetime import datetime
 import os
-import sys
 import json
-
+from git import Repo,Git
+from github import Github
+from datetime import datetime
+from api.models import PullRequest
+from django.shortcuts import render
+from rest_framework import viewsets
+from django.http import HttpResponse
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from django.contrib.auth.decorators import login_required
+from api.serializer import BranchSerializer,CommitSerializer,CommitDetailSerializer,PRListSerializer,PullRequestSerializer
 
 try:
     TOKEN = os.environ['TOKEN']
@@ -23,11 +21,6 @@ try:
     repo = g.get_repo(REPO)
 except:
     print("falta configurar las variables de entorno")
-
-try:
-    import httplib
-except:
-    import http.client as httplib
 
 #funcion para tarer una lista de los pull request
 def getPRs():
@@ -42,6 +35,7 @@ def closePRgit(number):
         return "cerrado correctamente"
     except:
         return "ocurrio un error"
+
 #funcion para hacer un merge 
 def mergePRgit(number,commit):
     pr = repo.get_pull(number)
@@ -50,6 +44,7 @@ def mergePRgit(number,commit):
         return"commit:"+pr.sha + " "+ pr.message
     except Exception as e:
         return e.data['message']
+
 #funcion para clonar un directotio o hacer pull
 def setupGit():
     local_repo_directory = os.path.join(os.getcwd(), 'repogit')
@@ -86,135 +81,129 @@ def detailCommits(branch,commitid):
     commit_list = []
     for commit in commits:
         if str(commit) == commitid:
-            
             temp = dict()
             temp['message'] = commit.message
             temp['date'] = datetime.utcfromtimestamp(commit.committed_date)
             temp['files'] = commit.stats.total['files']
             temp['author'] = commit.author.name
             temp['mail'] = commit.author.email
-            
             commit_list.append(temp)
     return commit_list[0]
 
-#funcion para ver si hay internet 
-def checkInternetHttplib(url="www.google.com", timeout=3):
-    conn = httplib.HTTPConnection(url, timeout=timeout)
-    try:
-        conn.request("HEAD", "/")
-        conn.close()
-        return True
-    except Exception as e:
-        return False
-#clase de home que muesra el navbar
-class HomeMainView(TemplateView):
-    internet_conection = checkInternetHttplib()
-    template_name = 'home/home.html'
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['internet'] = self.internet_conection
-        return context
-
-#clase que muestra las ra,sde un pullruquest
-class BranchesListView(TemplateView):
-    template_name = 'branches/branches.html'
-    def get_context_data(self,**kwargs):
-        context = super().get_context_data(**kwargs)
-        repo = setupGit()
-        context['branches'] = [str(item).replace('/','_') for item in repo.remote().refs]
-        return context
-
-#clase para ver los detalles de una rama
-class BranchDetail(TemplateView):
-    template_name = 'branches/detailbranch.html'
-    def get_context_data(self,**kwargs):
-        context = super().get_context_data(**kwargs)
-        branch = kwargs['branch']
-        commits = branchCommits(branch)
-        context['commits'] = commits
-        context['branchref'] = branch
-        return context
-
-#clase que muestra los detalles de un commit
-class CommitDetail(TemplateView):
-    template_name = 'branches/commitdetail.html'
-    def get_context_data(self,**kwargs):
-        context = super().get_context_data(**kwargs)
-        branch = kwargs['branch']
-        commit = kwargs['commit']
-        detail = detailCommits(branch,commit)
-        context['detail'] = detail
-        context['commit'] = commit
-        context['branch'] = branch.replace('_','/')
-        return context
-
-#cclase que muestra la lista de tosos los pullrequest creados
-class PullRequestCreated(ListView):
-    model = PullRequest
-    template_name = 'pr/pr_created.html'
-
-#clase de la lista de los PR en un repocitorio
-class PRView(TemplateView):
-    template_name = 'pr/pr.html'
-    def get_context_data(self,**kwargs):
-        context = super().get_context_data(**kwargs)
-        repo = setupGit()
-        context['branches'] = [str(item).replace('/','_') for item in repo.remote().refs]
-        return context
-
-#clas eque miestra la lista de los pullreques 
-class PRViewList(TemplateView):
-    template_name = 'pr/prlist.html'
-    def get_context_data(self,**kwargs):
-        context = super().get_context_data(**kwargs)
+class PRListBackup(viewsets.ModelViewSet):
+    """
+    una simple VIew set para listar todos los pull
+    request creados y ver como fueron creados
+    """
+    queryset = PullRequest.objects.all()
+    serializer_class = PullRequestSerializer
+    
+class PRListViewSet(viewsets.ViewSet):
+    """
+    una simple VIew set para listar todos los pull
+    request que se tienen en un repo y cerrarlos o modificarlos si fuera necesario 
+    """
+    def list(self,request):
         prs = getPRs()
-        context['pulls'] = prs
-        return context
+        serializer = PRListSerializer(prs,many=True)
+        return Response(serializer.data)
 
-#clase que cierra un pullrequest
-def closePR(request):
-    number = request.POST['number']
-    message = closePRgit(int(number))
-    return HttpResponse(json.dumps({'message':message}),content_type="application/json")
+    def create(self,request):
+        base = request.data['base'].split('_')[1]
+        title = request.data['title']
+        body = request.data['body']
+        commit = request.data['commit']
+        compare = request.data['compare'].split('_')[1]
+        merge = request.data['merge']
+        if merge == 'true':
+            try:
+                pr = repo.create_pull(title=title, body=body, head=compare, base=base)
+                pr = pr.merge(commit_message=commit)
+                pr_create = PullRequest.objects.create(
+                    author =  pr.user,
+                    title = pr.title,
+                    description = pr.body,
+                    status = pr.state
+                )
+                message = "commit:"+pr.sha + " "+ pr.message
+            except Exception as e:
+                message = e.data['message']+": " + e.data['errors'][0]['message']
+        else:
+            try:
+                pr = repo.create_pull(title=title, body=body, head=compare, base=base)
+                pr_create = PullRequest.objects.create(
+                    author =  pr.user,
+                    title = pr.title,
+                    description = pr.body,
+                    status = pr.state
+                )
+                message = "Title:"+pr.title + " "+ "number:"+ str(pr.number)
+            except Exception as e:
+                message = e.data['message']+": " + e.data['errors'][0]['message']
+        return HttpResponse(json.dumps({'message':message}),content_type="application/json")
 
-#view que hace un merge de un pullreuqest
-def mergePR(request):
-    number = request.POST['number']
-    commit = request.POST['commit']
-    message = mergePRgit(int(number),commit)
-    return HttpResponse(json.dumps({'message':message}),content_type="application/json")
+    @action(methods=['post'],detail=True)
+    def mergePR(self,request,pk=None):
+        number = request.data['number']
+        commit = request.data['commit']
+        message = mergePRgit(int(number),commit)
+        return HttpResponse(json.dumps({'message':message}),content_type="application/json")
 
-#view que crea un pullrequest
-def createPR(request):
-    base = request.POST['base'].split('_')[1]
-    title = request.POST['title']
-    body = request.POST['body']
-    commit = request.POST['commit']
-    compare = request.POST['compare'].split('_')[1]
-    merge = request.POST['merge']
-    if merge == 'true':
-        try:
-            pr = repo.create_pull(title=title, body=body, head=compare, base=base)
-            pr = pr.merge(commit_message=commit)
-            pr_create = PullRequest.objects.create(
-                author =  pr.user,
-                title = pr.title,
-                description = pr.body,
-                status = pr.state
-            )
-            message = "commit:"+pr.sha + " "+ pr.message
-        except Exception as e:
-            message = e.data['message']+": " + e.data['errors'][0]['message']
-    else:
-        try:
-            pr = repo.create_pull(title=title, body=body, head=compare, base=base)
-            pr_create = PullRequest.objects.create(
-                author =  pr.user,
-                title = pr.title,
-                description = pr.body,
-                status = pr.state
-            )
-            message = "Title:"+pr.title + " "+ "number:"+ str(pr.number)
-        except Exception as e:
-            message = e.data['message']+": " + e.data['errors'][0]['message']
-    return HttpResponse(json.dumps({'message':message}),content_type="application/json")
+    @action(methods=['post'],detail=True)
+    def closePR(self,request,pk=None):
+        number = request.data['number']
+        message = closePRgit(int(number))
+        return HttpResponse(json.dumps({'message':message}),content_type="application/json")
+
+class BranchViewSet(viewsets.ViewSet):
+    """
+    una simple viewset para listar todas las ramas de un repo, 
+    ver los commits de cada repo y el detalle de los commits
+    """
+    def list(self, request):
+        repo = setupGit()
+        branches= [str(item).replace('/','_') for item in repo.remote().refs]
+        branches2= [{"branch":str(item).replace('/','_')} for item in repo.remote().refs]
+        serializer = BranchSerializer(branches2, many=True)
+        return Response(serializer.data)
+
+    @action(methods=['get'],detail=True)
+    def commit(self,request,pk=None, *args, **kwargs):
+        commit = request.GET.get('commit', None)
+        branch = pk.replace('_','/')
+        branch = branch.replace('"','')
+        repo = setupGit()
+        commits = list(repo.iter_commits(branch))
+        commit_list = []
+        commitf = commit.replace('"',"")
+        for commit in commits:
+            if str(commit) == commitf:
+                temp = dict()
+                temp['message'] = commit.message
+                temp['date'] = datetime.utcfromtimestamp(commit.committed_date)
+                temp['files'] = commit.stats.total['files']
+                temp['author'] = commit.author.name
+                temp['mail'] = commit.author.email
+                commit_list.append(temp)
+        serializer = CommitDetailSerializer(commit_list, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        branch = pk.replace('_','/')
+        branch = branch.replace('"','')
+        repo = setupGit()
+        commits = list(repo.iter_commits(branch))
+        commit_list = []
+        for commit in commits:
+            temp = dict()
+            temp['commit'] = commit
+            temp['message'] = commit.message
+            temp['author'] = commit.author.name
+            temp['date'] = datetime.utcfromtimestamp(commit.committed_date)
+            commit_list.append(temp)
+        serializer = CommitSerializer(commit_list, many=True)
+        return Response(serializer.data)
+
+
+
+
